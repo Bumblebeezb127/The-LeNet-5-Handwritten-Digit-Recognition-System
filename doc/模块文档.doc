@@ -1,0 +1,277 @@
+# LeNet-5 手写数字识别系统模块文档
+
+## 1. 模块概述
+
+本项目采用模块化设计，共分为5个主要模块：模型模块(models)、数据模块(data)、训练模块(train)、界面模块(ui)和可视化模块(visualization)。
+
+## 2. models模块
+
+### 2.1 lenet5.py
+
+**功能**: LeNet-5卷积神经网络模型定义
+
+**类**: `LeNet5(nn.Module)`
+
+**主要属性**:
+- `conv1`: 第一层卷积 (Conv2d)
+- `bn1`: 第一层批归一化 (BatchNorm2d)
+- `pool1`: 第一层池化 (MaxPool2d)
+- `conv2`: 第二层卷积
+- `bn2`: 第二层批归一化
+- `pool2`: 第二层池化
+- `conv3`: 第三层卷积
+- `fc1`: 第一层全连接
+- `dropout`: Dropout层
+- `fc2`: 输出层
+
+**主要方法**:
+| 方法名 | 参数 | 返回值 | 功能说明 |
+|--------|------|--------|---------|
+| `forward(x)` | x: torch.Tensor | torch.Tensor | 前向传播 |
+| `get_conv_layers()` | 无 | List[Conv2d] | 获取卷积层列表 |
+| `get_feature_maps(x)` | x: torch.Tensor | List[Tensor] | 获取特征图 |
+
+**使用示例**:
+```python
+model = LeNet5(num_classes=10)
+x = torch.randn(1, 1, 28, 28)
+output = model(x)
+features = model.get_feature_maps(x)
+```
+
+**类**: `LeNet5Original(nn.Module)`
+- 原始LeNet-5结构，不含BatchNorm和Dropout
+
+**函数**: `count_parameters(model)`
+- 统计模型可训练参数量
+
+### 2.2 model_manager.py
+
+**功能**: 模型保存与加载管理
+
+**类**: `ModelManager`
+
+**初始化参数**:
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `model_dir` | str | "models/checkpoints" | 模型保存目录 |
+
+**主要方法**:
+| 方法名 | 参数 | 返回值 | 功能说明 |
+|--------|------|--------|---------|
+| `save_model(model, optimizer, epoch, accuracy, loss, filename)` | 见说明 | str | 保存模型 |
+| `load_model(model, filepath, device)` | model, filepath, device | tuple | 加载模型 |
+| `load_latest_model(model, device)` | model, device | tuple | 加载最新模型 |
+| `list_models()` | 无 | List[Path] | 列出所有检查点 |
+
+## 3. data模块
+
+### 3.1 data_loader.py
+
+**功能**: MNIST数据集加载与预处理
+
+**类**: `MNISTDataLoader`
+
+**初始化参数**:
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `data_dir` | str | "./data" | 数据存储目录 |
+| `batch_size` | int | 64 | 批量大小 |
+| `use_augmentation` | bool | False | 是否使用数据增强 |
+
+**主要方法**:
+| 方法名 | 参数 | 返回值 | 功能说明 |
+|--------|------|--------|---------|
+| `get_dataloaders()` | 无 | Tuple[DataLoader, DataLoader] | 获取训练和测试加载器 |
+| `get_train_size()` | 无 | int | 获取训练集样本数 |
+| `get_test_size()` | 无 | int | 获取测试集样本数 |
+
+**数据预处理流程**:
+1. 随机旋转 (±10°)
+2. 随机平移 (±10%)
+3. 转换为Tensor
+4. 归一化 (mean=0.1307, std=0.3081)
+
+**类**: `HandwritingDataset(Dataset)`
+- 自定义手写数字数据集
+
+**类**: `ImagePreprocessor`
+
+**主要方法**:
+| 方法名 | 参数 | 返回值 | 功能说明 |
+|--------|------|--------|---------|
+| `preprocess(image)` | image: PIL Image/np.ndarray | torch.Tensor | 预处理单张图像 |
+| `preprocess_multiple(images)` | images: List | torch.Tensor | 批量预处理 |
+
+## 4. train模块
+
+### 4.1 trainer.py
+
+**功能**: 模型训练与评估
+
+**类**: `Trainer`
+
+**初始化参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `model` | nn.Module | 待训练模型 |
+| `train_loader` | DataLoader | 训练数据加载器 |
+| `test_loader` | DataLoader | 测试数据加载器 |
+| `device` | str | 计算设备 |
+| `save_dir` | str | 模型保存目录 |
+
+**主要方法**:
+| 方法名 | 参数 | 返回值 | 功能说明 |
+|--------|------|--------|---------|
+| `train_epoch(epoch)` | epoch: int | Tuple[float, float] | 训练一个epoch |
+| `evaluate()` | 无 | Tuple[float, float, List, List] | 评估模型 |
+| `train(epochs, save_best)` | epochs, save_best | Tuple[Path, float] | 完整训练流程 |
+| `get_metrics()` | 无 | Dict | 获取训练指标 |
+
+**类**: `Evaluator`
+
+**初始化参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `model` | nn.Module | 待评估模型 |
+| `device` | str | 计算设备 |
+
+**主要方法**:
+| 方法名 | 参数 | 返回值 | 功能说明 |
+|--------|------|--------|---------|
+| `predict(images)` | images: Tensor | Tuple[np.ndarray, np.ndarray, np.ndarray] | 预测 |
+| `evaluate(test_loader)` | test_loader | Tuple[float, List, List] | 评估 |
+| `measure_inference_time(image, num_runs)` | image, num_runs | Dict | 测量推理时间 |
+
+**函数**: `plot_training_history(metrics, save_path)`
+- 绘制训练历史曲线
+
+## 5. ui模块
+
+### 5.1 handwriting_ui.py
+
+**功能**: pygame手写输入界面
+
+**类**: `HandwritingCanvas`
+
+**初始化参数**:
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `width` | int | 280 | 画布宽度 |
+| `height` | int | 280 | 画布高度 |
+| `canvas_size` | int | 28 | 实际图像大小 |
+
+**主要方法**:
+| 方法名 | 参数 | 返回值 | 功能说明 |
+|--------|------|--------|---------|
+| `reset()` | 无 | None | 清空画布 |
+| `get_canvas()` | 无 | np.ndarray | 获取画布内容 |
+| `draw_point(pos)` | pos: tuple | None | 绘制点 |
+| `draw_line(pos)` | pos: tuple | None | 绘制线 |
+| `handle_event(event)` | event | None | 处理pygame事件 |
+| `get_pil_image()` | 无 | PIL.Image | 获取PIL图像 |
+
+**类**: `HandwritingUI`
+
+**初始化参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `model` | nn.Module | 识别模型 |
+| `device` | str | 计算设备 |
+| `canvas_size` | int | 画布大小 |
+
+**主要方法**:
+| 方法名 | 参数 | 返回值 | 功能说明 |
+|--------|------|--------|---------|
+| `run()` | 无 | None | 运行主循环 |
+| `predict()` | 无 | None | 执行预测 |
+| `save_canvas(directory)` | directory | str | 保存画布 |
+| `preprocess_canvas()` | 无 | torch.Tensor | 预处理画布 |
+| `update_preview()` | 无 | None | 更新预览 |
+
+**功能按钮**:
+- `predict`: 识别当前数字
+- `clear`: 清空画布
+- `save`: 保存当前图像
+- `quit`: 退出程序
+
+## 6. visualization模块
+
+### 6.1 visualizer.py
+
+**功能**: 特征图和训练过程可视化
+
+**类**: `FeatureMapVisualizer`
+
+**初始化参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `model` | nn.Module | 可视化模型 |
+| `device` | str | 计算设备 |
+
+**主要方法**:
+| 方法名 | 参数 | 返回值 | 功能说明 |
+|--------|------|--------|---------|
+| `get_feature_maps(image_tensor)` | image_tensor | List[Tensor] | 获取特征图 |
+| `visualize_feature_maps(image, save_path, max_channels)` | image, save_path, max_channels | Figure | 可视化特征图 |
+| `visualize_conv_filters(layer_idx, save_path)` | layer_idx, save_path | Figure | 可视化滤波器 |
+
+**类**: `TrainingVisualizer`
+
+**静态方法**:
+| 方法名 | 参数 | 返回值 | 功能说明 |
+|--------|------|--------|---------|
+| `plot_training_curves(metrics, save_path)` | metrics, save_path | Figure | 绘制训练曲线 |
+| `plot_confusion_matrix(y_true, y_pred, save_path)` | y_true, y_pred, save_path | Figure | 绘制混淆矩阵 |
+
+**类**: `ImageVisualizer`
+
+**静态方法**:
+| 方法名 | 参数 | 返回值 | 功能说明 |
+|--------|------|--------|---------|
+| `show_sample_images(dataset, num_samples, save_path)` | dataset, num_samples, save_path | Figure | 显示样本图像 |
+| `visualize_predictions(images, true_labels, pred_labels, confidences, num_samples, save_path)` | 见说明 | Figure | 可视化预测 |
+
+## 7. 模块依赖关系
+
+```
+main.py
+├── models.lenet5 (LeNet5)
+├── models.model_manager (ModelManager)
+├── data.data_loader (MNISTDataLoader, ImagePreprocessor)
+├── train.trainer (Trainer, Evaluator)
+├── visualization.visualizer (FeatureMapVisualizer, TrainingVisualizer, ImageVisualizer)
+└── ui.handwriting_ui (HandwritingUI)
+```
+
+## 8. 数据流向
+
+```
+用户输入
+    ↓
+HandwritingCanvas (pygame界面)
+    ↓
+preprocess_canvas() → ImagePreprocessor
+    ↓
+LeNet5.forward() → 预测结果
+    ↓
+HandwritingUI (显示结果)
+```
+
+## 9. 训练流程
+
+```
+MNISTDataLoader
+    ↓
+Trainer.train_epoch()
+    ↓
+LeNet5.forward()
+    ↓
+CrossEntropyLoss
+    ↓
+Backward + Optimizer.step()
+    ↓
+ModelManager.save_model()
+    ↓
+Evaluator.evaluate()
+```

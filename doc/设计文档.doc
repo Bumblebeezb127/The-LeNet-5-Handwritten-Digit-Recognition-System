@@ -1,0 +1,236 @@
+# LeNet-5 手写数字识别系统设计文档
+
+## 1. 项目概述
+
+### 1.1 项目背景
+
+手写数字识别是计算机视觉和模式识别领域的经典入门问题，也是OCR（光学字符识别）系统的核心子任务。LeNet-5作为卷积神经网络的鼻祖模型，由Yann LeCun等人于1998年提出，结构简单但包含卷积、池化和全连接等核心组件，非常适合理解深度学习的基本原理。
+
+### 1.2 项目目标
+
+本项目旨在：
+1. 搭建并训练LeNet-5模型，在MNIST测试集上达到≥99.0%的识别准确率
+2. 通过添加Dropout和数据增强等手段，将训练集与测试集准确率的差距控制在1%以内
+3. 可视化卷积层的特征图，直观展示低级边缘特征到高级抽象特征的提取过程
+4. 实现一个基于pygame的手写数字输入界面，能够对用户提供的单张手写数字图片进行实时识别
+
+### 1.3 技术选型
+
+- **深度学习框架**: PyTorch
+- **数据集**: MNIST手写数字数据集
+- **可视化**: Matplotlib
+- **图形界面**: Pygame
+- **编程语言**: Python 3.x
+
+## 2. 系统架构
+
+### 2.1 总体架构
+
+系统采用模块化设计，主要包含以下模块：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      主程序 (main.py)                        │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐        │
+│  │ 模型模块 │  │ 数据模块 │  │ 训练模块 │  │ 界面模块 │        │
+│  │ models/ │  │  data/  │  │ train/  │  │   ui/   │        │
+│  └─────────┘  └─────────┘  └─────────┘  └─────────┘        │
+│       │            │            │            │               │
+│       └────────────┴────────────┴────────────┘               │
+│                         │                                    │
+│                  ┌──────┴──────┐                            │
+│                  │ 可视化模块   │                            │
+│                  │visualization│                            │
+│                  └─────────────┘                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 2.2 模块说明
+
+| 模块名称 | 功能描述 | 主要类/函数 |
+|---------|---------|------------|
+| models | 模型定义与管理 | LeNet5, ModelManager |
+| data | 数据加载与预处理 | MNISTDataLoader, ImagePreprocessor |
+| train | 模型训练与评估 | Trainer, Evaluator |
+| ui | 手写输入界面 | HandwritingUI, HandwritingCanvas |
+| visualization | 可视化功能 | FeatureMapVisualizer, TrainingVisualizer |
+
+## 3. 详细设计
+
+### 3.1 LeNet-5模型设计
+
+#### 3.1.1 网络结构
+
+LeNet-5模型针对MNIST数据集（28x28灰度图）进行了适配：
+
+```
+输入层: 1@28x28
+  ↓
+卷积层C1: 6个5x5卷积核, padding=2 → 6@28x28
+  ↓
+批归一化BN1 + ReLU
+  ↓
+池化层S2: 2x2最大池化 → 6@14x14
+  ↓
+卷积层C3: 16个5x5卷积核 → 16@10x10
+  ↓
+批归一化BN2 + ReLU
+  ↓
+池化层S4: 2x2最大池化 → 16@5x5
+  ↓
+卷积层C5: 120个5x5卷积核 → 120@1x1
+  ↓
+ReLU + Reshape
+  ↓
+全连接层F6: 120 → 84
+  ↓
+Dropout(0.5) + ReLU
+  ↓
+输出层F7: 84 → 10
+  ↓
+Softmax输出
+```
+
+#### 3.1.2 模型改进
+
+相比原始LeNet-5，本项目做了以下改进：
+1. 添加BatchNorm层加速训练稳定
+2. 添加Dropout层防止过拟合
+3. 使用Adam优化器替代SGD
+4. 使用学习率衰减策略
+
+### 3.2 数据处理流程
+
+```
+原始图像 → 随机旋转 → 随机仿射变换 → ToTensor → Normalize → 输入模型
+```
+
+### 3.3 训练策略
+
+- **优化器**: Adam (lr=0.001)
+- **学习率调度**: 每5个epoch衰减一半
+- **损失函数**: CrossEntropyLoss
+- **批量大小**: 128
+- **数据增强**: 随机旋转±10°, 随机平移±10%
+
+### 3.4 pygame界面设计
+
+界面采用双区域布局：
+- **左侧**: 280x280像素的手写画布
+- **右侧**: 控制按钮和识别结果
+
+功能按钮：
+- **Predict**: 执行识别
+- **Clear**: 清空画布
+- **Save**: 保存当前图像
+- **Quit**: 退出程序
+
+## 4. 接口设计
+
+### 4.1 模型模块接口
+
+```python
+class LeNet5(nn.Module):
+    def forward(self, x) -> torch.Tensor
+    def get_feature_maps(self, x) -> List[torch.Tensor]
+    def get_conv_layers(self) -> List[nn.Conv2d]
+```
+
+### 4.2 数据模块接口
+
+```python
+class MNISTDataLoader:
+    def get_dataloaders() -> Tuple[DataLoader, DataLoader]
+    def get_train_size() -> int
+    def get_test_size() -> int
+
+class ImagePreprocessor:
+    def preprocess(image) -> torch.Tensor
+    def preprocess_multiple(images) -> torch.Tensor
+```
+
+### 4.3 训练模块接口
+
+```python
+class Trainer:
+    def train_epoch(epoch) -> Tuple[float, float]
+    def evaluate() -> Tuple[float, float, List, List]
+    def train(epochs, save_best) -> Tuple[Path, float]
+    def get_metrics() -> Dict
+
+class Evaluator:
+    def predict(images) -> Tuple[np.ndarray, np.ndarray, np.ndarray]
+    def evaluate(test_loader) -> Tuple[float, List, List]
+    def measure_inference_time(image, num_runs) -> Dict
+```
+
+### 4.4 界面模块接口
+
+```python
+class HandwritingUI:
+    def run() -> None
+    def predict() -> None
+    def save_canvas(directory) -> str
+    def preprocess_canvas() -> torch.Tensor
+```
+
+## 5. 性能指标
+
+| 指标名称 | 目标值 | 说明 |
+|---------|--------|------|
+| 测试集准确率 | ≥99.0% | 模型在MNIST测试集上的识别准确率 |
+| 测试集损失值 | ≤0.05 | 交叉熵损失值 |
+| 过拟合差距 | ≤1% | 训练集与测试集准确率之差 |
+| 推理时间 | ≤10ms | CPU环境下单张图片平均推理时间 |
+| 参数量 | ≤10万 | 模型总参数量 |
+
+## 6. 目录结构
+
+```
+MNIST/
+├── models/                     # 模型定义模块
+│   ├── __init__.py
+│   ├── lenet5.py              # LeNet-5模型架构定义
+│   └── model_manager.py       # 模型保存加载管理
+├── data/                       # 数据加载模块
+│   ├── __init__.py
+│   └── data_loader.py         # 数据加载与预处理
+├── train/                      # 训练模块
+│   ├── __init__.py
+│   └── trainer.py            # 训练器与评估器
+├── ui/                        # 用户界面模块
+│   ├── __init__.py
+│   └── handwriting_ui.py      # pygame手写界面
+├── visualization/             # 可视化模块
+│   ├── __init__.py
+│   └── visualizer.py         # 特征图可视化
+├── outputs/                   # 输出目录
+│   ├── feature_maps.png       # 特征图可视化
+│   ├── conv*_filters.png     # 卷积滤波器可视化
+│   └── prediction_samples.png # 预测样本可视化
+├── doc/                       # 文档目录
+│   ├── 设计文档.doc
+│   ├── 模块文档.doc
+│   ├── 答辩报告.doc
+│   └── 答辩PPT.ppt
+├── main.py                   # 主程序入口
+├── README.md                  # 项目说明
+└── requirements.txt           # 依赖列表
+```
+
+## 7. 错误处理
+
+| 错误类型 | 处理方式 |
+|---------|---------|
+| 模型文件不存在 | 自动从头训练 |
+| 数据集下载失败 | 使用缓存或重试 |
+| GPU不可用 | 自动切换到CPU |
+| OpenMP冲突 | 设置KMP_DUPLICATE_LIB_OK=TRUE |
+
+## 8. 扩展性考虑
+
+1. **模型扩展**: 可轻松替换为其他CNN架构（ResNet, VGG等）
+2. **数据集扩展**: 可适配其他手写字符数据集（EMNIST, handwriting letters）
+3. **界面扩展**: 可添加图像上传、批量识别等功能
+4. **部署扩展**: 可导出为ONNX格式用于移动端部署
