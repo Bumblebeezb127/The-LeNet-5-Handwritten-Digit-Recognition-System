@@ -5,10 +5,74 @@ Pygame手写输入界面
 
 import pygame
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import torch
 import io
 import os
+import platform
+
+# 全局字体缓存
+_cn_font = None
+
+def get_chinese_font(size=36):
+    """获取中文字体"""
+    global _cn_font
+    if _cn_font is not None:
+        return _cn_font
+    
+    # 尝试多个中文字体
+    font_paths = []
+    system = platform.system()
+    
+    if system == 'Windows':
+        font_paths = [
+            'C:/Windows/Fonts/simhei.ttf',      # 黑体
+            'C:/Windows/Fonts/msyh.ttc',        # 微软雅黑
+            'C:/Windows/Fonts/simsun.ttc',      # 宋体
+        ]
+    elif system == 'Darwin':  # macOS
+        font_paths = [
+            '/System/Library/Fonts/PingFang.ttc',
+            '/System/Library/Fonts/STHeiti Light.ttc',
+            '/Library/Fonts/Arial Unicode.ttf',
+        ]
+    else:  # Linux
+        font_paths = [
+            '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+            '/usr/share/fonts/truetype/arphic/uming.ttc',
+            '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        ]
+    
+    # 尝试加载字体
+    for path in font_paths:
+        if os.path.exists(path):
+            try:
+                _cn_font = ImageFont.truetype(path, size)
+                return _cn_font
+            except:
+                continue
+    
+    # 如果都找不到，使用默认字体（可能不支持中文）
+    _cn_font = ImageFont.load_default()
+    return _cn_font
+
+def draw_text_surface(text, size=36, color=(50, 50, 50)):
+    """使用PIL渲染文本，返回pygame Surface"""
+    font = get_chinese_font(size)
+    # 获取文本尺寸
+    bbox = font.getbbox(text)
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    
+    # 创建PIL图像
+    img = Image.new('RGBA', (width + 4, height + 4), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.text((2, 2), text, font=font, fill=(*color, 255))
+    
+    # 转换为pygame Surface
+    str_buf = img.tobytes('raw', 'RGBA')
+    surface = pygame.image.fromstring(str_buf, img.size, 'RGBA')
+    return surface
 
 
 class HandwritingCanvas:
@@ -37,11 +101,14 @@ class HandwritingCanvas:
 
     def draw_point(self, pos):
         """在指定位置绘制点"""
-        x, y = pos[1] // self.scale, pos[0] // self.scale
+        # pygame: pos = (x_horizontal, y_vertical)
+        # canvas[row, col] = canvas[y_vertical, x_horizontal]
+        x = pos[0] // self.scale   # 水平方向 -> 列
+        y = pos[1] // self.scale   # 垂直方向 -> 行
 
         for dx in range(-self.brush_size + 1, self.brush_size):
             for dy in range(-self.brush_size + 1, self.brush_size):
-                nx, ny = x + dx, y + dy
+                nx, ny = y + dy, x + dx
                 if 0 <= nx < self.canvas_size and 0 <= ny < self.canvas_size:
                     dist = dx * dx + dy * dy
                     if dist < self.brush_size * self.brush_size:
@@ -52,15 +119,17 @@ class HandwritingCanvas:
         if self.last_pos is None:
             self.draw_point(pos)
         else:
-            x0, y0 = self.last_pos[1] // self.scale, self.last_pos[0] // self.scale
-            x1, y1 = pos[1] // self.scale, pos[0] // self.scale
+            # pygame: pos = (x_horizontal, y_vertical)
+            # canvas[row, col] = canvas[y_vertical, x_horizontal]
+            x0, y0 = self.last_pos[0] // self.scale, self.last_pos[1] // self.scale
+            x1, y1 = pos[0] // self.scale, pos[1] // self.scale
 
             points = self._bresenham_line(x0, y0, x1, y1)
             for x, y in points:
-                if 0 <= x < self.canvas_size and 0 <= y < self.canvas_size:
+                if 0 <= y < self.canvas_size and 0 <= x < self.canvas_size:
                     for dx in range(-self.brush_size + 1, self.brush_size):
                         for dy in range(-self.brush_size + 1, self.brush_size):
-                            nx, ny = x + dx, y + dy
+                            nx, ny = y + dy, x + dx
                             if 0 <= nx < self.canvas_size and 0 <= ny < self.canvas_size:
                                 dist = dx * dx + dy * dy
                                 if dist < self.brush_size * self.brush_size:
@@ -122,59 +191,52 @@ class HandwritingUI:
         self.model.eval()
         self.device = device
 
-        self.canvas_width = canvas_size
-        self.canvas_height = canvas_size
-        self.canvas = HandwritingCanvas(canvas_size, canvas_size)
+        # 画布尺寸
+        self.canvas_size = canvas_size
+        self.canvas = HandwritingCanvas(canvas_size, canvas_size, canvas_size // 10)
 
-        self.screen_width = 600
-        self.screen_height = 450
+        # 界面尺寸
+        self.screen_width = 420
+        self.screen_height = 500
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-        pygame.display.set_caption('LeNet-5 手写数字识别')
+        pygame.display.set_caption('LeNet-5 Handwritten Digit Recognition')
 
-        self.font = pygame.font.Font(None, 36)
-        self.small_font = pygame.font.Font(None, 24)
-
-        self.bg_color = (240, 240, 240)
+        # 按钮
+        self.bg_color = (45, 45, 55)
+        self.canvas_bg = (20, 20, 25)
         self.button_color = (70, 130, 180)
-        self.button_hover = (100, 160, 210)
-        self.text_color = (50, 50, 50)
+        self.button_hover = (90, 150, 200)
+        self.text_color = (220, 220, 220)
+        self.result_color = (100, 220, 100)
 
         self.buttons = {
-            'predict': pygame.Rect(320, 40, 120, 45),
-            'clear': pygame.Rect(460, 40, 100, 45),
-            'save': pygame.Rect(320, 100, 120, 45),
-            'quit': pygame.Rect(460, 100, 100, 45),
+            'predict': pygame.Rect(30, 320, 110, 45),
+            'clear': pygame.Rect(155, 320, 110, 45),
+            'quit': pygame.Rect(280, 320, 110, 45),
         }
 
         self.last_prediction = None
         self.last_confidence = 0.0
         self.inference_time = 0.0
 
-        self.preview_surface = None
         self.update_preview()
 
     def update_preview(self):
         """更新预览图像"""
         canvas_array = self.canvas.get_canvas()
-        preview = np.zeros((self.canvas_width, self.canvas_height), dtype=np.uint8)
-        for i in range(self.canvas_width):
-            for j in range(self.canvas_height):
-                preview[i, j] = canvas_array[i * self.canvas.canvas_size // self.canvas_width,
-                                            j * self.canvas.canvas_size // self.canvas_height]
-
-        preview_pil = Image.fromarray(preview)
-        preview_rgb = np.array(preview_pil.resize((self.canvas_width, self.canvas_height)))
-        preview_rgb = np.transpose(preview_rgb, (1, 0, 2))
-
+        # 转置: (height, width) -> (width, height) for pygame
+        preview = canvas_array.T
+        preview_rgb = np.stack([preview] * 3, axis=-1)  # (width, height, 3)
         self.preview_surface = pygame.surfarray.make_surface(preview_rgb)
+        self.preview_surface = pygame.transform.scale(
+            self.preview_surface, (self.canvas_size, self.canvas_size)
+        )
 
     def preprocess_canvas(self):
         """预处理画布内容用于模型输入"""
         canvas = self.canvas.get_canvas()
 
-        inverted = 255 - canvas
-
-        image = Image.fromarray(inverted)
+        image = Image.fromarray(canvas)
         image = image.resize((28, 28))
 
         image_array = np.array(image, dtype=np.float32) / 255.0
@@ -223,8 +285,8 @@ class HandwritingUI:
         """绘制按钮"""
         color = self.button_hover if hover else self.button_color
         pygame.draw.rect(surface, color, rect, border_radius=8)
-
-        text_surface = self.small_font.render(text, True, (255, 255, 255))
+        
+        text_surface = draw_text_surface(text, 24, (255, 255, 255))
         text_rect = text_surface.get_rect(center=rect.center)
         surface.blit(text_surface, text_rect)
 
@@ -232,59 +294,28 @@ class HandwritingUI:
         """绘制界面"""
         self.screen.fill(self.bg_color)
 
-        canvas_rect = pygame.Rect(20, 20, self.canvas_width, self.canvas_height)
-        pygame.draw.rect(self.screen, (255, 255, 255), canvas_rect)
+        # 画布
+        canvas_rect = pygame.Rect(20, 20, self.canvas_size, self.canvas_size)
+        pygame.draw.rect(self.screen, self.canvas_bg, canvas_rect, border_radius=4)
         if self.preview_surface:
             self.screen.blit(self.preview_surface, (canvas_rect.x, canvas_rect.y))
-
         pygame.draw.rect(self.screen, (100, 100, 100), canvas_rect, 2)
 
+        # 按钮
         mouse_pos = pygame.mouse.get_pos()
         for name, rect in self.buttons.items():
             hover = rect.collidepoint(mouse_pos)
-            self.draw_button(self.screen, rect, name.capitalize(), hover)
+            self.draw_button(self.screen, rect, name.upper(), hover)
 
-        info_y = 320
+        # 结果展示
         if self.last_prediction is not None:
-            result_text = f'识别结果: {self.last_prediction}'
-            result_surface = self.font.render(result_text, True, (0, 100, 0))
-            self.screen.blit(result_surface, (20, info_y))
+            result_text = f'Result: {self.last_prediction}'
+            result_surface = draw_text_surface(result_text, 48, self.result_color)
+            self.screen.blit(result_surface, (20, 390))
 
-            conf_text = f'置信度: {self.last_confidence:.2f}%'
-            conf_surface = self.font.render(conf_text, True, (50, 50, 150))
-            self.screen.blit(conf_surface, (20, info_y + 40))
-
-            time_text = f'推理时间: {self.inference_time:.2f}ms'
-            time_surface = self.font.render(time_text, True, (100, 100, 100))
-            self.screen.blit(time_surface, (20, info_y + 80))
-
-            prob_text = "各数字概率:"
-            prob_surface = self.small_font.render(prob_text, True, self.text_color)
-            self.screen.blit(prob_surface, (320, info_y))
-
-            image_tensor = self.preprocess_canvas()
-            with torch.no_grad():
-                outputs = self.model(image_tensor)
-                probs = torch.softmax(outputs, dim=1).cpu().numpy()[0]
-
-            for i, prob in enumerate(probs):
-                bar_x = 320
-                bar_y = info_y + 25 + i * 20
-                bar_width = int(prob * 200)
-                pygame.draw.rect(self.screen, (200, 200, 200), (bar_x, bar_y, 200, 15))
-                pygame.draw.rect(self.screen, (70, 130, 180), (bar_x, bar_y, bar_width, 15))
-                num_surface = self.small_font.render(f'{i}: {prob*100:.1f}%', True, self.text_color)
-                self.screen.blit(num_surface, (530, bar_y))
-
-        instructions = [
-            "使用鼠标左键在画布上书写数字",
-            "Predict: 识别当前数字",
-            "Clear: 清空画布",
-            "Save: 保存当前图像"
-        ]
-        for i, text in enumerate(instructions):
-            surface = self.small_font.render(text, True, (120, 120, 120))
-            self.screen.blit(surface, (20, self.screen_height - 100 + i * 20))
+            conf_text = f'Confidence: {self.last_confidence:.1f}%'
+            conf_surface = draw_text_surface(conf_text, 28, self.text_color)
+            self.screen.blit(conf_surface, (20, 440))
 
         pygame.display.flip()
 

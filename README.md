@@ -5,17 +5,24 @@
 ## 快速搭建
 
 ```bash
-# 1. 克隆仓库
-git clone <repository_url>
-cd MNIST
-
-# 2. 创建虚拟环境（推荐）
+# 1. 创建虚拟环境
+# python
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 .venv\Scripts\activate     # Windows
+# conda
+conda create -n pytorch-lenet5 python=3.10
+conda activate pytorch-lenet5
 
-# 3. 安装依赖
-pip install torch torchvision numpy matplotlib pillow pygame scikit-learn tqdm
+
+# 2. 安装依赖
+pip install -r requirements.txt
+
+# 3. pytorch
+# cpu版本
+# pip install torch torchvision torchaudio
+# GPU版本（cuda13.0）
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
 
 # 4. 运行程序
 python main.py train 20      # 训练模型
